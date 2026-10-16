@@ -1,0 +1,48 @@
+name: Build EXE
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        shell: cmd
+        run: build.bat
+
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sha = $env:GITHUB_SHA
+          $sha7 = $sha.Substring(0,7)
+          $tag = "build-$sha7"
+          Write-Host "Tag: $tag  SHA: $sha"
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+              gh release delete $tag --yes --cleanup-tag
+          }
+
+          gh release create $tag `
+              --title $sha7 `
+              --notes "Automated build of commit $sha" `
+              --target $sha
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          gh release upload $tag BatteryWarn.exe --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
