@@ -13,10 +13,6 @@
         isolation: isolate;
       }
 
-      .st3 {
-        fill: #fff;
-      }
-
       .st4 {
         mask: url(#b);
       }
@@ -75,7 +71,6 @@
    <stop stop-color="#737a80" offset="1"/>
   </linearGradient>
  </defs>
- <rect class="st3" y=".02" width="17.79" height="17.79"/>
  <path class="st8" d="m8.89 15.91c3.87 0 7-3.13 7-7s-3.14-7-7-7-7 3.13-7 7 3.13 7 7 7z"/>
  <g class="st4" mask="url(#b)">
   <path class="st6" d="m8.89 4.05c-2.5 0-4.53 2.03-4.53 4.53s2.03 4.53 4.53 4.53 4.53-2.03 4.53-4.53-2.03-4.53-4.53-4.53z"/>
