@@ -33,7 +33,6 @@ static constexpr UINT MENU_PRESET_30 = 1030;
 static constexpr UINT MENU_CUSTOM    = 1099;
 static constexpr UINT MENU_TEST      = 1100;
 static constexpr UINT MENU_EXIT      = 1101;
-static constexpr UINT MENU_COUNTDOWN = 1102;
 
 /* ---------------- library + OS helpers ---------------- */
 
@@ -271,7 +270,7 @@ struct app_state_t
         Shell_NotifyIconW(NIM_MODIFY, nid);
     }
 
-    /* ------- notifications ------- */
+    /* ------- warning ------- */
 
     void show_warning(DWORD percent)
     {
@@ -285,8 +284,6 @@ struct app_state_t
 
         double value = static_cast<double>(percent) / 100.0;
 
-        /* Preferred path: WinRT toast, which also draws a progress bar
-           showing the current battery level. */
         if (toast_available &&
             toast_show_progress(L"battery-low",
                                 L"Battery low",
@@ -298,8 +295,7 @@ struct app_state_t
             return;
         }
 
-        /* Fallback: the classic tray balloon, for systems where the
-           WinRT toast subsystem is unavailable. */
+        /* Fallback: classic tray balloon. */
         nid->uFlags |= NIF_INFO;
         nid->dwInfoFlags = NIIF_WARNING | NIIF_RESPECT_QUIET_TIME;
         nid->uTimeout = 15000;
@@ -311,44 +307,13 @@ struct app_state_t
         nid->dwInfoFlags = 0;
     }
 
-    void show_test_notification()
-    {
-        wchar_t body[128];
-        wsprintfW(body,
-                  L"This is what a warning will look like. "
-                  L"Current threshold: %lu%%.",
-                  static_cast<unsigned long>(threshold));
+    /* ------- test notification ------- */
 
-        DWORD percent;
-        BOOL on_ac;
-        if (read_battery(percent, on_ac) && toast_available)
-        {
-            wchar_t value_str[16];
-            wsprintfW(value_str, L"%lu%%", static_cast<unsigned long>(percent));
-            double value = static_cast<double>(percent) / 100.0;
-
-            if (toast_show_progress(L"test",
-                                    L"Test notification",
-                                    body,
-                                    value,
-                                    value_str,
-                                    L"Current battery level"))
-                return;
-        }
-
-        nid->uFlags |= NIF_INFO;
-        nid->dwInfoFlags = NIIF_INFO;
-        nid->uTimeout = 8000;
-        lstrcpynW(nid->szInfoTitle, L"Test notification",
-                  ARRAYSIZE(nid->szInfoTitle));
-        lstrcpynW(nid->szInfo, body, ARRAYSIZE(nid->szInfo));
-        Shell_NotifyIconW(NIM_MODIFY, nid);
-        nid->uFlags &= ~NIF_INFO;
-        nid->dwInfoFlags = 0;
-    }
-
-    /* ------- countdown (demo of the bindable progress bar) ------- */
-
+    /* The only test entry in the menu.  It shows the toast subsystem
+       in its full form: a title, a body, and a progress bar that
+       updates once a second.  Users who click this see exactly the
+       mechanism the real warning uses, plus the dynamic update path
+       that a future "battery drains in N minutes" feature would use. */
     void start_countdown()
     {
         if (countdown_active)
@@ -358,14 +323,15 @@ struct app_state_t
         {
             MessageBoxW(nullptr,
                         L"Toast notifications are not available on this "
-                        L"system, so the countdown cannot be shown.",
+                        L"system.",
                         APP_TITLE, MB_ICONWARNING);
             return;
         }
 
         if (!toast_show_progress(L"countdown",
                                  L"Battery Warn",
-                                 L"Test countdown",
+                                 L"This is what a warning looks like. "
+                                 L"The bar fills in real time.",
                                  1.0,
                                  L"60s",
                                  L"Counting down\u2026"))
@@ -538,8 +504,6 @@ struct app_state_t
 
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING, MENU_TEST, L"Test notification");
-        AppendMenuW(menu, MF_STRING, MENU_COUNTDOWN,
-                    L"Test 60-second countdown");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING, MENU_EXIT, L"Exit");
 
@@ -586,9 +550,8 @@ struct app_state_t
             case MENU_PRESET_25: set_threshold(25); return 0;
             case MENU_PRESET_30: set_threshold(30); return 0;
             case MENU_CUSTOM:    open_regedit_at_key(); return 0;
-            case MENU_TEST:      show_test_notification(); return 0;
-            case MENU_COUNTDOWN: start_countdown();        return 0;
-            case MENU_EXIT:      DestroyWindow(h);         return 0;
+            case MENU_TEST:      start_countdown();     return 0;
+            case MENU_EXIT:      DestroyWindow(h);      return 0;
             default: break;
             }
             return 0;
@@ -667,10 +630,6 @@ void start()
     state.wm_taskbar_created = RegisterWindowMessageW(L"TaskbarCreated");
     state.wm_show_menu       = RegisterWindowMessageW(L"BatteryWarnShowMenu");
 
-    /* Bring up the WinRT toast subsystem.  This registers the AUMID
-       with the shell by creating a Start Menu shortcut, and returns
-       false if the toast infrastructure is not available -- in which
-       case the app falls back to the classic tray balloon. */
     state.toast_available = toast_init() ? TRUE : FALSE;
 
     state.hwnd = CreateWindowExW(0, APP_ID, APP_TITLE, 0, 0, 0, 0, 0,
