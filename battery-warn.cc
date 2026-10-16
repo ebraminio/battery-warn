@@ -155,10 +155,6 @@ struct Registry
                        reinterpret_cast<const BYTE *>(&value), sizeof value);
     }
 
-    /* Make sure the Threshold value exists in the key so that when the
-       user opens regedit, the right pane has something to double-click.
-       A fresh key with no values shows an empty pane and leaves the
-       user guessing what to do. */
     void ensure_threshold_exists(DWORD defaultValue) const
     {
         if (!key)
@@ -169,7 +165,7 @@ struct Registry
         if (RegQueryValueExW(key, REG_VALUE, nullptr, &type,
                              reinterpret_cast<LPBYTE>(&existing), &size) == ERROR_SUCCESS
             && type == REG_DWORD)
-            return;  /* already present; leave the user's value alone */
+            return;
         RegSetValueExW(key, REG_VALUE, 0, REG_DWORD,
                        reinterpret_cast<const BYTE *>(&defaultValue),
                        sizeof defaultValue);
@@ -312,7 +308,10 @@ struct app_state_t
             return;
         }
 
+        DWORD previous_threshold = threshold;
         load_settings();
+        if (threshold != previous_threshold)
+            warned = FALSE;
 
         if (on_ac)
         {
@@ -331,19 +330,11 @@ struct app_state_t
 
     void open_regedit_at_key()
     {
-        /* Guarantee the key and the Threshold value both exist before
-           we open regedit, so the user lands on a key with a value they
-           can immediately double-click and edit. */
         {
             Registry reg;
             reg.ensure_threshold_exists(threshold);
         }
 
-        /* Regedit reads LastKey from this location on its next launch
-           and opens at the recorded key.  This is more reliable across
-           versions than passing the key path on the command line, which
-           some builds ignore entirely and others only honour for paths
-           in specific hives. */
         HKEY k = nullptr;
         if (RegCreateKeyExW(HKEY_CURRENT_USER,
                 L"Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit",
@@ -390,6 +381,8 @@ struct app_state_t
 
     void show_tray_menu()
     {
+        load_settings();
+
         HMENU menu = CreatePopupMenu();
 
         DWORD percent;
