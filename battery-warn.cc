@@ -1,6 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
-#define _UNICODE
 #define WINVER 0x0601
 #define _WIN32_WINNT 0x0601
 #include <Windows.h>
@@ -29,6 +28,20 @@ static constexpr UINT MENU_PRESET_30 = 1030;
 static constexpr UINT MENU_CUSTOM    = 1099;
 static constexpr UINT MENU_TEST      = 1100;
 static constexpr UINT MENU_EXIT      = 1101;
+
+/* ---------------- lifetime annotation ---------------- */
+
+#if defined(__has_cpp_attribute)
+#if __has_cpp_attribute(clang::lifetimebound)
+#define LIFETIME_BOUND [[clang::lifetimebound]]
+#elif __has_cpp_attribute(msvc::lifetimebound)
+#define LIFETIME_BOUND [[msvc::lifetimebound]]
+#else
+#define LIFETIME_BOUND
+#endif
+#else
+#define LIFETIME_BOUND
+#endif
 
 /* ---------------- library + OS helpers ---------------- */
 
@@ -86,7 +99,7 @@ static void enable_dark_mode_support()
     if (build < 18362)
     {
         if (auto pAllowDarkModeForApp = uxtheme.getProcedure<BOOL(WINAPI *)(BOOL)>(
-                MAKEINTRESOURCEA(135)))  /* undocumented AllowDarkModeForApp */
+                MAKEINTRESOURCEA(135)))
             pAllowDarkModeForApp(TRUE);
     }
     else
@@ -100,7 +113,7 @@ static void enable_dark_mode_support()
             Max
         };
         if (auto pSetPreferredAppMode = uxtheme.getProcedure<INT(WINAPI *)(PreferredAppMode)>(
-                MAKEINTRESOURCEA(135)))  /* undocumented SetPreferredAppMode */
+                MAKEINTRESOURCEA(135)))
             pSetPreferredAppMode(PreferredAppMode::AllowDark);
     }
 }
@@ -203,7 +216,7 @@ struct app_state_t
     DWORD           threshold;
     BOOL            warned;
 
-    app_state_t(NOTIFYICONDATAW *nid_, HINSTANCE hInst_)
+    app_state_t(NOTIFYICONDATAW *nid_ LIFETIME_BOUND, HINSTANCE hInst_ LIFETIME_BOUND)
         : hwnd(nullptr), hInst(hInst_), nid(nid_),
           app_icon(nullptr), wm_taskbar_created(0), wm_show_menu(0),
           threshold(DEFAULT_THRESHOLD), warned(FALSE) {}
@@ -275,7 +288,7 @@ struct app_state_t
                   L"Plug in the charger.",
                   static_cast<unsigned long>(threshold));
         Shell_NotifyIconW(NIM_MODIFY, nid);
-        nid->uFlags &= ~NIF_INFO;
+        nid->uFlags &= static_cast<UINT>(~static_cast<UINT>(NIF_INFO));
         nid->dwInfoFlags = 0;
     }
 
@@ -291,7 +304,7 @@ struct app_state_t
                   L"Current threshold: %lu%%.",
                   static_cast<unsigned long>(threshold));
         Shell_NotifyIconW(NIM_MODIFY, nid);
-        nid->uFlags &= ~NIF_INFO;
+        nid->uFlags &= static_cast<UINT>(~static_cast<UINT>(NIF_INFO));
         nid->dwInfoFlags = 0;
     }
 
@@ -342,9 +355,10 @@ struct app_state_t
         {
             constexpr const wchar_t *last_key =
                 L"Computer\\HKEY_CURRENT_USER\\Software\\BatteryWarn";
+            const int     len  = lstrlenW(last_key) + 1;
+            const DWORD   size = static_cast<DWORD>(len) * static_cast<DWORD>(sizeof(wchar_t));
             RegSetValueExW(k, L"LastKey", 0, REG_SZ,
-                reinterpret_cast<const BYTE *>(last_key),
-                static_cast<DWORD>((lstrlenW(last_key) + 1) * sizeof(wchar_t)));
+                reinterpret_cast<const BYTE *>(last_key), size);
             RegCloseKey(k);
         }
 
