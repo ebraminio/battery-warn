@@ -16,7 +16,7 @@ static constexpr LPCWSTR APP_TITLE = L"Battery Warn";
 static constexpr LPCWSTR REG_PATH  = L"Software\\BatteryWarn";
 static constexpr LPCWSTR REG_VALUE = L"Threshold";
 
-static constexpr DWORD   DEFAULT_THRESHOLD = 20;
+static constexpr DWORD   DEFAULT_THRESHOLD = 5;
 static constexpr UINT    POLL_MS           = 30000;
 static constexpr UINT    WM_TRAY           = WM_APP + 1;
 static constexpr UINT    TIMER_ID          = 1;
@@ -25,6 +25,7 @@ static constexpr UINT    TIMER_ID_COUNTDOWN = 2;
 static constexpr int     COUNTDOWN_SECONDS  = 60;
 
 static constexpr UINT MENU_INFO      = 1000;
+static constexpr UINT MENU_PRESET_5  = 1005;
 static constexpr UINT MENU_PRESET_10 = 1010;
 static constexpr UINT MENU_PRESET_15 = 1015;
 static constexpr UINT MENU_PRESET_20 = 1020;
@@ -479,6 +480,7 @@ struct app_state_t
         HMENU sub = CreatePopupMenu();
         struct preset_t { UINT id; DWORD value; LPCWSTR label; };
         static const preset_t presets[] = {
+            { MENU_PRESET_5, 5, L"5%" },
             { MENU_PRESET_10, 10, L"10%" },
             { MENU_PRESET_15, 15, L"15%" },
             { MENU_PRESET_20, 20, L"20%" },
@@ -544,6 +546,7 @@ struct app_state_t
         case WM_COMMAND:
             switch (LOWORD(wParam))
             {
+            case MENU_PRESET_5: set_threshold(5); return 0;
             case MENU_PRESET_10: set_threshold(10); return 0;
             case MENU_PRESET_15: set_threshold(15); return 0;
             case MENU_PRESET_20: set_threshold(20); return 0;
