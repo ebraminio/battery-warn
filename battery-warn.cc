@@ -16,7 +16,7 @@ static constexpr LPCWSTR APP_TITLE = L"Battery Warn";
 static constexpr LPCWSTR REG_PATH  = L"Software\\BatteryWarn";
 static constexpr LPCWSTR REG_VALUE = L"Threshold";
 
-static constexpr DWORD   DEFAULT_THRESHOLD = 5;
+static constexpr DWORD   DEFAULT_THRESHOLD = 8;
 static constexpr UINT    POLL_MS           = 30000;
 static constexpr UINT    WM_TRAY           = WM_APP + 1;
 static constexpr UINT    TIMER_ID          = 1;
@@ -25,12 +25,12 @@ static constexpr UINT    TIMER_ID_COUNTDOWN = 2;
 static constexpr int     COUNTDOWN_SECONDS  = 60;
 
 static constexpr UINT MENU_INFO      = 1000;
-static constexpr UINT MENU_PRESET_5  = 1005;
+static constexpr UINT MENU_PRESET_6  = 1006;
+static constexpr UINT MENU_PRESET_8  = 1008;
 static constexpr UINT MENU_PRESET_10 = 1010;
-static constexpr UINT MENU_PRESET_15 = 1015;
-static constexpr UINT MENU_PRESET_20 = 1020;
-static constexpr UINT MENU_PRESET_25 = 1025;
-static constexpr UINT MENU_PRESET_30 = 1030;
+static constexpr UINT MENU_PRESET_12 = 1012;
+static constexpr UINT MENU_PRESET_14 = 1014;
+static constexpr UINT MENU_PRESET_16 = 1016;
 static constexpr UINT MENU_CUSTOM    = 1099;
 static constexpr UINT MENU_TEST      = 1100;
 static constexpr UINT MENU_EXIT      = 1101;
@@ -480,12 +480,12 @@ struct app_state_t
         HMENU sub = CreatePopupMenu();
         struct preset_t { UINT id; DWORD value; LPCWSTR label; };
         static const preset_t presets[] = {
-            { MENU_PRESET_5, 5, L"5%" },
+            { MENU_PRESET_6, 6, L"6%" },
+            { MENU_PRESET_8, 8, L"8%" },
             { MENU_PRESET_10, 10, L"10%" },
-            { MENU_PRESET_15, 15, L"15%" },
-            { MENU_PRESET_20, 20, L"20%" },
-            { MENU_PRESET_25, 25, L"25%" },
-            { MENU_PRESET_30, 30, L"30%" },
+            { MENU_PRESET_12, 12, L"12%" },
+            { MENU_PRESET_14, 14, L"14%" },
+            { MENU_PRESET_16, 16, L"16%" },
         };
         bool is_preset = false;
         for (const auto &p : presets)
@@ -546,12 +546,12 @@ struct app_state_t
         case WM_COMMAND:
             switch (LOWORD(wParam))
             {
-            case MENU_PRESET_5: set_threshold(5); return 0;
+            case MENU_PRESET_6: set_threshold(6); return 0;
+            case MENU_PRESET_8: set_threshold(8); return 0;
             case MENU_PRESET_10: set_threshold(10); return 0;
-            case MENU_PRESET_15: set_threshold(15); return 0;
-            case MENU_PRESET_20: set_threshold(20); return 0;
-            case MENU_PRESET_25: set_threshold(25); return 0;
-            case MENU_PRESET_30: set_threshold(30); return 0;
+            case MENU_PRESET_12: set_threshold(12); return 0;
+            case MENU_PRESET_14: set_threshold(14); return 0;
+            case MENU_PRESET_16: set_threshold(16); return 0;
             case MENU_CUSTOM:    open_regedit_at_key(); return 0;
             case MENU_TEST:      start_countdown();     return 0;
             case MENU_EXIT:      DestroyWindow(h);      return 0;
