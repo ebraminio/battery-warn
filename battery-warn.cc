@@ -341,6 +341,17 @@ struct app_state_t
         if (!countdown_active)
             return;
 
+        /* Check every second if power has been reconnected. */
+        DWORD percent;
+        BOOL on_ac;
+        if (read_battery(percent, on_ac) && on_ac)
+        {
+            KillTimer(hwnd, TIMER_ID_COUNTDOWN);
+            countdown_active = FALSE;
+            toast.hide(L"battery-warning");
+            return;
+        }
+
         countdown_remaining--;
         if (countdown_remaining <= 0)
         {
