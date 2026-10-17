@@ -289,7 +289,7 @@ struct app_state_t
             toast.show_progress(L"battery-warning",
                                 is_test ? L"Test notification" : L"Battery low",
                                 body,
-                                1.0,
+                                1, 1,
                                 L"60s",
                                 L"Please save your work\u2026"))
         {
@@ -337,15 +337,13 @@ struct app_state_t
             countdown_remaining = 0;
             
             /* The grace period is over. */
-            toast.update_progress(L"battery-warning", 0.0, L"0s", L"Time's up! Plug in now.");
+            toast.update_progress(L"battery-warning", 0, COUNTDOWN_SECONDS, L"0s", L"Time's up! Plug in now.");
             return;
         }
 
         wchar_t buf[16];
         wsprintfW(buf, L"%ds", countdown_remaining);
-        double value = static_cast<double>(countdown_remaining)
-                     / static_cast<double>(COUNTDOWN_SECONDS);
-        toast.update_progress(L"battery-warning", value, buf, L"Please save your work\u2026");
+        toast.update_progress(L"battery-warning", countdown_remaining, COUNTDOWN_SECONDS, buf, L"Please save your work\u2026");
     }
 
     /* ------- polling ------- */

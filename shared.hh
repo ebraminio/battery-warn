@@ -1,5 +1,3 @@
-/* toast.hh - WinRT toast with a bindable progress bar. */
-
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -36,12 +34,14 @@ public:
     bool show_progress(const wchar_t *tag,
                        const wchar_t *title,
                        const wchar_t *body,
-                       double value,
+                       unsigned int value_num,
+                       unsigned int value_den,
                        const wchar_t *value_string,
                        const wchar_t *status);
 
     bool update_progress(const wchar_t *tag,
-                         double value,
+                         unsigned int value_num,
+                         unsigned int value_den,
                          const wchar_t *value_string,
                          const wchar_t *status);
 
@@ -58,9 +58,10 @@ private:
         HStr &operator=(const HStr &) = delete;
     };
 
-    bool fill_values(void *data, double value, const wchar_t *value_string,
-                     const wchar_t *status, const wchar_t *title,
-                     const wchar_t *body, bool include_title_and_body);
+    bool fill_values(void *data, unsigned int value_num, unsigned int value_den,
+                     const wchar_t *value_string, const wchar_t *status,
+                     const wchar_t *title, const wchar_t *body,
+                     bool include_title_and_body);
 
     void *notifier_;
     void *current_toast_;

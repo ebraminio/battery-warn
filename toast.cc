@@ -7,21 +7,16 @@
 #include <propkey.h>
 #include <propsys.h>
 
-#ifdef _MSC_VER
-extern "C" int _fltused = 0;
-#endif
-
-/* Windows 11 strictly requires 6 decimal places for the progress bar float. */
-static void format_unit_double(double v, wchar_t *buf)
+/* Windows 11 strictly requires 6 decimal places. We use pure integer math. */
+static void format_unit_ratio(unsigned int num, unsigned int den, wchar_t *buf)
 {
-    if (v >= 1.0) { lstrcpynW(buf, L"1.0", 16); return; }
-    if (v <= 0.0) { lstrcpynW(buf, L"0.0", 16); return; }
+    if (den == 0 || num >= den) { lstrcpynW(buf, L"1.0", 16); return; }
+    if (num == 0)               { lstrcpynW(buf, L"0.0", 16); return; }
 
-    int scaled = static_cast<int>(v * 1000000.0 + 0.5);
-    if (scaled > 999999) scaled = 999999;
-    if (scaled < 0)      scaled = 0;
+    /* (num * 1000000) / den */
+    unsigned long scaled = (static_cast<unsigned long>(num) * 1000000UL) / den;
 
-    wsprintfW(buf, L"0.%06d", scaled);
+    wsprintfW(buf, L"0.%06lu", scaled);
 }
 
 static constexpr LPCWSTR TOAST_XML =
@@ -176,9 +171,10 @@ bool Toast::init()
     return SUCCEEDED(hr) && notifier_ != nullptr;
 }
 
-bool Toast::fill_values(void *data_ptr, double value, const wchar_t *value_string,
-                        const wchar_t *status, const wchar_t *title,
-                        const wchar_t *body, bool include_title_and_body)
+bool Toast::fill_values(void *data_ptr, unsigned int value_num, unsigned int value_den,
+                        const wchar_t *value_string, const wchar_t *status,
+                        const wchar_t *title, const wchar_t *body,
+                        bool include_title_and_body)
 {
     INotificationData *data = static_cast<INotificationData*>(data_ptr);
     data->put_SequenceNumber(0);
@@ -188,7 +184,7 @@ bool Toast::fill_values(void *data_ptr, double value, const wchar_t *value_strin
         return false;
 
     wchar_t value_buf[16];
-    format_unit_double(value, value_buf);
+    format_unit_ratio(value_num, value_den, value_buf);
 
     unsigned char replaced = 0;
     HStr k_value(this, L"progressValue");      HStr v_value(this, value_buf);
@@ -214,7 +210,8 @@ bool Toast::fill_values(void *data_ptr, double value, const wchar_t *value_strin
 }
 
 bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_t *body,
-                          double value, const wchar_t *value_string, const wchar_t *status)
+                          unsigned int value_num, unsigned int value_den,
+                          const wchar_t *value_string, const wchar_t *status)
 {
     if (!notifier_) return false;
     IToastNotifier *notifier = static_cast<IToastNotifier*>(notifier_);
@@ -267,7 +264,7 @@ bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_
 
         if (data)
         {
-            fill_values(data, value, value_string, status, title, body, true);
+            fill_values(data, value_num, value_den, value_string, status, title, body, true);
 
             IToastNotification4 *toast4 = nullptr;
             if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification4, reinterpret_cast<void **>(&toast4))))
@@ -287,7 +284,7 @@ bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_
     return true;
 }
 
-bool Toast::update_progress(const wchar_t *tag, double value,
+bool Toast::update_progress(const wchar_t *tag, unsigned int value_num, unsigned int value_den,
                             const wchar_t *value_string, const wchar_t *status)
 {
     if (!notifier_ || !current_toast_) return false;
@@ -303,7 +300,7 @@ bool Toast::update_progress(const wchar_t *tag, double value,
     static_cast<IInspectable*>(data_inst)->Release();
     if (!data) return false;
 
-    fill_values(data, value, value_string, status, nullptr, nullptr, false);
+    fill_values(data, value_num, value_den, value_string, status, nullptr, nullptr, false);
 
     IToastNotifier2 *notifier2 = nullptr;
     HRESULT hr = notifier->QueryInterface(kIID_IToastNotifier2, reinterpret_cast<void **>(&notifier2));
