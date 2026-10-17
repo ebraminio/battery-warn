@@ -1,6 +1,7 @@
 /* toast.cc - experimental WinRT toast with a bindable progress bar. */
 
 #include "toast.h"
+#include "toast-abi.h"
 
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
@@ -13,18 +14,9 @@
 #endif
 
 #include <Windows.h>
-#include <shobjidl_core.h>
-#include <roapi.h>
-#include <winstring.h>
-#include <inspectable.h>
-#include <windows.foundation.h>
-#include <windows.foundation.collections.h>
-#include <windows.data.xml.dom.h>
-#include <windows.ui.notifications.h>
-
-using namespace ABI::Windows::UI::Notifications;
-using namespace ABI::Windows::Data::Xml::Dom;
-using namespace ABI::Windows::Foundation::Collections;
+#include <shobjidl.h>
+#include <propkey.h>
+#include <propsys.h>
 
 extern "C" int _fltused = 0;
 
@@ -86,8 +78,6 @@ struct HStr
 static IToastNotifier     *g_notifier      = nullptr;
 static IToastNotification *g_current_toast = nullptr;
 
-/* user32's wsprintf does not support %f. 
-   Windows 11 strictly requires 6 decimal places for the progress bar float. */
 static void format_unit_double(double v, wchar_t *buf)
 {
     if (v >= 1.0) { lstrcpynW(buf, L"1.0", 16); return; }
@@ -239,7 +229,7 @@ extern "C" bool toast_init()
     IToastNotificationManagerStatics *mgr = nullptr;
     hr = g_com.RoGetActivationFactory(
             HStr(L"Windows.UI.Notifications.ToastNotificationManager"),
-            __uuidof(IToastNotificationManagerStatics),
+            kIID_IToastNotificationManagerStatics,
             (void **)&mgr);
     if (FAILED(hr) || !mgr) return false;
 
@@ -266,7 +256,7 @@ extern "C" bool toast_show_progress(const wchar_t *tag, const wchar_t *title, co
         return false;
 
     IXmlDocumentIO *xml_io = nullptr;
-    xml_inst->QueryInterface(__uuidof(IXmlDocumentIO), (void **)&xml_io);
+    xml_inst->QueryInterface(kIID_IXmlDocumentIO, (void **)&xml_io);
     if (!xml_io) { xml_inst->Release(); return false; }
 
     HRESULT hr = xml_io->LoadXml(HStr(TOAST_XML));
@@ -274,14 +264,14 @@ extern "C" bool toast_show_progress(const wchar_t *tag, const wchar_t *title, co
     if (FAILED(hr)) { xml_inst->Release(); return false; }
 
     IXmlDocument *xml_doc = nullptr;
-    xml_inst->QueryInterface(__uuidof(IXmlDocument), (void **)&xml_doc);
+    xml_inst->QueryInterface(kIID_IXmlDocument, (void **)&xml_doc);
     xml_inst->Release();
     if (!xml_doc) return false;
 
     IToastNotificationFactory *factory = nullptr;
     hr = g_com.RoGetActivationFactory(
             HStr(L"Windows.UI.Notifications.ToastNotification"),
-            __uuidof(IToastNotificationFactory),
+            kIID_IToastNotificationFactory,
             (void **)&factory);
     if (FAILED(hr) || !factory) { xml_doc->Release(); return false; }
 
@@ -292,7 +282,7 @@ extern "C" bool toast_show_progress(const wchar_t *tag, const wchar_t *title, co
     if (FAILED(hr) || !toast) return false;
 
     IToastNotification2 *toast2 = nullptr;
-    if (SUCCEEDED(toast->QueryInterface(__uuidof(IToastNotification2), (void **)&toast2)))
+    if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification2, (void **)&toast2)))
     {
         toast2->put_Tag(HStr(tag));
         toast2->Release();
@@ -303,7 +293,7 @@ extern "C" bool toast_show_progress(const wchar_t *tag, const wchar_t *title, co
             HStr(L"Windows.UI.Notifications.NotificationData"), &data_inst)))
     {
         INotificationData *data = nullptr;
-        data_inst->QueryInterface(__uuidof(INotificationData), (void **)&data);
+        data_inst->QueryInterface(kIID_INotificationData, (void **)&data);
         data_inst->Release();
 
         if (data)
@@ -311,7 +301,7 @@ extern "C" bool toast_show_progress(const wchar_t *tag, const wchar_t *title, co
             fill_values(data, value, value_string, status, title, body, true);
 
             IToastNotification4 *toast4 = nullptr;
-            if (SUCCEEDED(toast->QueryInterface(__uuidof(IToastNotification4), (void **)&toast4)))
+            if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification4, (void **)&toast4)))
             {
                 toast4->put_Data(data);
                 toast4->Release();
@@ -339,14 +329,14 @@ extern "C" bool toast_update_progress(const wchar_t *tag, double value,
         return false;
 
     INotificationData *data = nullptr;
-    data_inst->QueryInterface(__uuidof(INotificationData), (void **)&data);
+    data_inst->QueryInterface(kIID_INotificationData, (void **)&data);
     data_inst->Release();
     if (!data) return false;
 
     fill_values(data, value, value_string, status, nullptr, nullptr, false);
 
     IToastNotifier2 *notifier2 = nullptr;
-    HRESULT hr = g_notifier->QueryInterface(__uuidof(IToastNotifier2), (void **)&notifier2);
+    HRESULT hr = g_notifier->QueryInterface(kIID_IToastNotifier2, (void **)&notifier2);
     if (FAILED(hr) || !notifier2) { data->Release(); return false; }
 
     NotificationUpdateResult result = NotificationUpdateResult_Failed;
