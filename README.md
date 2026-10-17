@@ -20,7 +20,7 @@ To start it with Windows, drop a shortcut in
 A tray icon appears. Right-click it for the menu:
 
 - **Battery: 78% (on battery)** — current state, read-only.
-- **Warn at** — pick a preset (10%, 15%, 20%, 25%, 30%) or **Custom…**.
+- **Warn at** — pick a preset (6%, 8%, 10%, 12%, 14%, 16%) or **Custom…**.
 - **Test notification** — see what a warning looks like.
 - **Exit**.
 
@@ -46,7 +46,7 @@ resets the warning too, so the new value takes effect right away.
 - Desktops with no battery get a quiet tooltip that says so, and no
   warnings.
 - Everything lives under `HKCU\Software\BatteryWarn`. Delete that key
-  and the app starts fresh with the default of 20%.
+  and the app starts fresh with the default of 8%.
 
 ## Building
 
