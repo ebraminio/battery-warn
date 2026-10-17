@@ -1,6 +1,6 @@
 /* toast.cc - experimental WinRT toast with a bindable progress bar. */
 
-#include "toast.h"
+#include "toast.hh"
 #include "toast-abi.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -28,21 +28,6 @@ static const IID kIID_IPersistFile =
     {0x0000010b, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
 static const IID kIID_IPropertyStore =
     {0x886d8eeb, 0x8cf2, 0x4446, {0x8D, 0x02, 0xCD, 0xBA, 0x1D, 0xBD, 0xCF, 0x99}};
-
-struct HStr
-{
-    HSTRING h;
-    toast_state_t *state;
-
-    HStr(toast_state_t *state_, const wchar_t *s) : h(nullptr), state(state_)
-    {
-        if (s) state->WindowsCreateString(s, static_cast<UINT32>(lstrlenW(s)), &h);
-    }
-    ~HStr() { if (h) state->WindowsDeleteString(h); }
-    operator HSTRING() const { return h; }
-    HStr(const HStr &) = delete;
-    HStr &operator=(const HStr &) = delete;
-};
 
 /* Windows 11 strictly requires 6 decimal places for the progress bar float. */
 static void format_unit_double(double v, wchar_t *buf)
@@ -139,15 +124,81 @@ static bool register_aumid()
     return ok;
 }
 
-static bool fill_values(toast_state_t *state,
-                        INotificationData *data,
-                        double value,
-                        const wchar_t *value_string,
-                        const wchar_t *status,
-                        const wchar_t *title,
-                        const wchar_t *body,
-                        bool include_title_and_body)
+/* -------- Toast class implementation -------- */
+
+Toast::HStr::HStr(Toast *state_, const wchar_t *s) : h(nullptr), state(state_)
 {
+    if (s) state->pWindowsCreateString_(s, static_cast<UINT32>(lstrlenW(s)), &h);
+}
+
+Toast::HStr::~HStr()
+{
+    if (h && state->pWindowsDeleteString_) state->pWindowsDeleteString_(h);
+}
+
+Toast::Toast()
+    : notifier_(nullptr), current_toast_(nullptr), mod_(nullptr),
+      pRoInitialize_(nullptr), pRoUninitialize_(nullptr), pRoGetActivationFactory_(nullptr),
+      pRoActivateInstance_(nullptr), pWindowsCreateString_(nullptr), pWindowsDeleteString_(nullptr)
+{
+}
+
+Toast::~Toast()
+{
+    shutdown();
+}
+
+void Toast::shutdown()
+{
+    if (current_toast_) { static_cast<IToastNotification*>(current_toast_)->Release(); current_toast_ = nullptr; }
+    if (notifier_)      { static_cast<IToastNotifier*>(notifier_)->Release();      notifier_ = nullptr; }
+}
+
+bool Toast::init()
+{
+    mod_ = GetModuleHandleW(L"combase.dll");
+    if (!mod_) mod_ = LoadLibraryW(L"combase.dll");
+    if (!mod_) return false;
+
+    #define GRAB(field, name) \
+        field = reinterpret_cast<decltype(field)>(GetProcAddress(mod_, name)); \
+        if (!field) return false;
+
+    GRAB(pRoInitialize_, "RoInitialize")
+    GRAB(pRoUninitialize_, "RoUninitialize")
+    GRAB(pRoGetActivationFactory_, "RoGetActivationFactory")
+    GRAB(pRoActivateInstance_, "RoActivateInstance")
+    GRAB(pWindowsCreateString_, "WindowsCreateString")
+    GRAB(pWindowsDeleteString_, "WindowsDeleteString")
+    #undef GRAB
+
+    HRESULT hr = pRoInitialize_(1);
+    if (FAILED(hr) && hr != S_FALSE && hr != RPC_E_CHANGED_MODE)
+        return false;
+
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+    SetCurrentProcessExplicitAppUserModelID(L"BatteryWarn");
+    register_aumid();
+
+    IToastNotificationManagerStatics *mgr = nullptr;
+    hr = pRoGetActivationFactory_(
+            HStr(this, L"Windows.UI.Notifications.ToastNotificationManager"),
+            kIID_IToastNotificationManagerStatics,
+            (void **)&mgr);
+    if (FAILED(hr) || !mgr) return false;
+
+    hr = mgr->CreateToastNotifierWithId(HStr(this, L"BatteryWarn"), (IToastNotifier**)&notifier_);
+    mgr->Release();
+
+    return SUCCEEDED(hr) && notifier_ != nullptr;
+}
+
+bool Toast::fill_values(void *data_ptr, double value, const wchar_t *value_string,
+                        const wchar_t *status, const wchar_t *title,
+                        const wchar_t *body, bool include_title_and_body)
+{
+    INotificationData *data = static_cast<INotificationData*>(data_ptr);
     data->put_SequenceNumber(0);
 
     IMap<HSTRING, HSTRING> *values = nullptr;
@@ -158,9 +209,9 @@ static bool fill_values(toast_state_t *state,
     format_unit_double(value, value_buf);
 
     unsigned char replaced = 0;
-    HStr k_value(state, L"progressValue");      HStr v_value(state, value_buf);
-    HStr k_vstr(state, L"progressValueString"); HStr v_vstr(state, value_string);
-    HStr k_stat(state, L"progressStatus");      HStr v_stat(state, status);
+    HStr k_value(this, L"progressValue");      HStr v_value(this, value_buf);
+    HStr k_vstr(this, L"progressValueString"); HStr v_vstr(this, value_string);
+    HStr k_stat(this, L"progressStatus");      HStr v_stat(this, status);
 
     if (FAILED(values->Insert(k_value, v_value, &replaced))) { values->Release(); return false; }
     if (FAILED(values->Insert(k_vstr,  v_vstr,  &replaced))) { values->Release(); return false; }
@@ -168,9 +219,9 @@ static bool fill_values(toast_state_t *state,
 
     if (include_title_and_body)
     {
-        HStr k_ttl(state, L"toastTitle");     HStr v_ttl(state, title);
-        HStr k_pttl(state, L"progressTitle"); HStr v_pttl(state, title);
-        HStr k_bdy(state, L"toastBody");      HStr v_bdy(state, body);
+        HStr k_ttl(this, L"toastTitle");     HStr v_ttl(this, title);
+        HStr k_pttl(this, L"progressTitle"); HStr v_pttl(this, title);
+        HStr k_bdy(this, L"toastBody");      HStr v_bdy(this, body);
         if (FAILED(values->Insert(k_ttl,  v_ttl,  &replaced))) { values->Release(); return false; }
         if (FAILED(values->Insert(k_pttl, v_pttl, &replaced))) { values->Release(); return false; }
         if (FAILED(values->Insert(k_bdy,  v_bdy,  &replaced))) { values->Release(); return false; }
@@ -180,83 +231,33 @@ static bool fill_values(toast_state_t *state,
     return true;
 }
 
-extern "C" bool toast_init(toast_state_t *state)
+bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_t *body,
+                          double value, const wchar_t *value_string, const wchar_t *status)
 {
-    if (!state) return false;
-    SecureZeroMemory(state, sizeof(*state));
+    if (!notifier_) return false;
+    IToastNotifier *notifier = static_cast<IToastNotifier*>(notifier_);
 
-    state->mod = GetModuleHandleW(L"combase.dll");
-    if (!state->mod) state->mod = LoadLibraryW(L"combase.dll");
-    if (!state->mod) return false;
-
-    #define GRAB(field, name) \
-        state->field = reinterpret_cast<decltype(state->field)>(GetProcAddress(state->mod, name)); \
-        if (!state->field) return false;
-
-    GRAB(RoInitialize, "RoInitialize")
-    GRAB(RoUninitialize, "RoUninitialize")
-    GRAB(RoGetActivationFactory, "RoGetActivationFactory")
-    GRAB(RoActivateInstance, "RoActivateInstance")
-    GRAB(WindowsCreateString, "WindowsCreateString")
-    GRAB(WindowsDeleteString, "WindowsDeleteString")
-    #undef GRAB
-
-    HRESULT hr = state->RoInitialize(1);
-    if (FAILED(hr) && hr != S_FALSE && hr != RPC_E_CHANGED_MODE)
-        return false;
-
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-
-    SetCurrentProcessExplicitAppUserModelID(L"BatteryWarn");
-    register_aumid();
-
-    IToastNotificationManagerStatics *mgr = nullptr;
-    hr = state->RoGetActivationFactory(
-            HStr(state, L"Windows.UI.Notifications.ToastNotificationManager"),
-            kIID_IToastNotificationManagerStatics,
-            (void **)&mgr);
-    if (FAILED(hr) || !mgr) return false;
-
-    hr = mgr->CreateToastNotifierWithId(HStr(state, L"BatteryWarn"), (IToastNotifier**)&state->notifier);
-    mgr->Release();
-
-    return SUCCEEDED(hr) && state->notifier != nullptr;
-}
-
-extern "C" void toast_shutdown(toast_state_t *state)
-{
-    if (!state) return;
-    if (state->current_toast) { static_cast<IToastNotification*>(state->current_toast)->Release(); state->current_toast = nullptr; }
-    if (state->notifier)      { static_cast<IToastNotifier*>(state->notifier)->Release();      state->notifier = nullptr; }
-}
-
-extern "C" bool toast_show_progress(toast_state_t *state, const wchar_t *tag, const wchar_t *title, const wchar_t *body,
-                                    double value, const wchar_t *value_string, const wchar_t *status)
-{
-    if (!state || !state->notifier) return false;
-    IToastNotifier *notifier = static_cast<IToastNotifier*>(state->notifier);
-
-    IInspectable *xml_inst = nullptr;
-    if (FAILED(state->RoActivateInstance(
-            HStr(state, L"Windows.Data.Xml.Dom.XmlDocument"), (void**)&xml_inst)))
+    void *xml_inst = nullptr;
+    if (FAILED(pRoActivateInstance_(
+            HStr(this, L"Windows.Data.Xml.Dom.XmlDocument"), &xml_inst)))
         return false;
 
     IXmlDocumentIO *xml_io = nullptr;
-    xml_inst->QueryInterface(kIID_IXmlDocumentIO, (void **)&xml_io);
-    if (!xml_io) { xml_inst->Release(); return false; }
+    static_cast<IInspectable*>(xml_inst)->QueryInterface(kIID_IXmlDocumentIO, (void **)&xml_io);
+    if (!xml_io) { static_cast<IInspectable*>(xml_inst)->Release(); return false; }
 
-    HRESULT hr = xml_io->LoadXml(HStr(state, TOAST_XML));
+    HRESULT hr = xml_io->LoadXml(HStr(this, TOAST_XML));
     xml_io->Release();
-    if (FAILED(hr)) { xml_inst->Release(); return false; }
+    if (FAILED(hr)) { static_cast<IInspectable*>(xml_inst)->Release(); return false; }
 
     IXmlDocument *xml_doc = nullptr;
-    xml_inst->QueryInterface(kIID_IXmlDocument, (void **)&xml_doc);
-    xml_inst->Release();
+    static_cast<IInspectable*>(xml_inst)->QueryInterface(kIID_IXmlDocument, (void **)&xml_doc);
+    static_cast<IInspectable*>(xml_inst)->Release();
     if (!xml_doc) return false;
 
     IToastNotificationFactory *factory = nullptr;
-    hr = state->RoGetActivationFactory(
-            HStr(state, L"Windows.UI.Notifications.ToastNotification"),
+    hr = pRoGetActivationFactory_(
+            HStr(this, L"Windows.UI.Notifications.ToastNotification"),
             kIID_IToastNotificationFactory,
             (void **)&factory);
     if (FAILED(hr) || !factory) { xml_doc->Release(); return false; }
@@ -270,21 +271,21 @@ extern "C" bool toast_show_progress(toast_state_t *state, const wchar_t *tag, co
     IToastNotification2 *toast2 = nullptr;
     if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification2, (void **)&toast2)))
     {
-        toast2->put_Tag(HStr(state, tag));
+        toast2->put_Tag(HStr(this, tag));
         toast2->Release();
     }
 
-    IInspectable *data_inst = nullptr;
-    if (SUCCEEDED(state->RoActivateInstance(
-            HStr(state, L"Windows.UI.Notifications.NotificationData"), (void**)&data_inst)))
+    void *data_inst = nullptr;
+    if (SUCCEEDED(pRoActivateInstance_(
+            HStr(this, L"Windows.UI.Notifications.NotificationData"), &data_inst)))
     {
         INotificationData *data = nullptr;
-        data_inst->QueryInterface(kIID_INotificationData, (void **)&data);
-        data_inst->Release();
+        static_cast<IInspectable*>(data_inst)->QueryInterface(kIID_INotificationData, (void **)&data);
+        static_cast<IInspectable*>(data_inst)->Release();
 
         if (data)
         {
-            fill_values(state, data, value, value_string, status, title, body, true);
+            fill_values(data, value, value_string, status, title, body, true);
 
             IToastNotification4 *toast4 = nullptr;
             if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification4, (void **)&toast4)))
@@ -299,49 +300,49 @@ extern "C" bool toast_show_progress(toast_state_t *state, const wchar_t *tag, co
     hr = notifier->Show(toast);
     if (FAILED(hr)) { toast->Release(); return false; }
 
-    if (state->current_toast) static_cast<IToastNotification*>(state->current_toast)->Release();
-    state->current_toast = toast;
+    if (current_toast_) static_cast<IToastNotification*>(current_toast_)->Release();
+    current_toast_ = toast;
     return true;
 }
 
-extern "C" bool toast_update_progress(toast_state_t *state, const wchar_t *tag, double value,
-                                      const wchar_t *value_string, const wchar_t *status)
+bool Toast::update_progress(const wchar_t *tag, double value,
+                            const wchar_t *value_string, const wchar_t *status)
 {
-    if (!state || !state->notifier || !state->current_toast) return false;
-    IToastNotifier *notifier = static_cast<IToastNotifier*>(state->notifier);
+    if (!notifier_ || !current_toast_) return false;
+    IToastNotifier *notifier = static_cast<IToastNotifier*>(notifier_);
 
-    IInspectable *data_inst = nullptr;
-    if (FAILED(state->RoActivateInstance(
-            HStr(state, L"Windows.UI.Notifications.NotificationData"), (void**)&data_inst)))
+    void *data_inst = nullptr;
+    if (FAILED(pRoActivateInstance_(
+            HStr(this, L"Windows.UI.Notifications.NotificationData"), &data_inst)))
         return false;
 
     INotificationData *data = nullptr;
-    data_inst->QueryInterface(kIID_INotificationData, (void **)&data);
-    data_inst->Release();
+    static_cast<IInspectable*>(data_inst)->QueryInterface(kIID_INotificationData, (void **)&data);
+    static_cast<IInspectable*>(data_inst)->Release();
     if (!data) return false;
 
-    fill_values(state, data, value, value_string, status, nullptr, nullptr, false);
+    fill_values(data, value, value_string, status, nullptr, nullptr, false);
 
     IToastNotifier2 *notifier2 = nullptr;
     HRESULT hr = notifier->QueryInterface(kIID_IToastNotifier2, (void **)&notifier2);
     if (FAILED(hr) || !notifier2) { data->Release(); return false; }
 
     NotificationUpdateResult result = NotificationUpdateResult_Failed;
-    hr = notifier2->UpdateWithTag(data, HStr(state, tag), &result);
+    hr = notifier2->UpdateWithTag(data, HStr(this, tag), &result);
     notifier2->Release();
     data->Release();
 
     return SUCCEEDED(hr) && result == NotificationUpdateResult_Succeeded;
 }
 
-extern "C" bool toast_hide(toast_state_t *state, const wchar_t * /*tag*/)
+bool Toast::hide(const wchar_t * /*tag*/)
 {
-    if (!state || !state->notifier || !state->current_toast) return false;
-    IToastNotifier *notifier = static_cast<IToastNotifier*>(state->notifier);
-    IToastNotification *toast = static_cast<IToastNotification*>(state->current_toast);
+    if (!notifier_ || !current_toast_) return false;
+    IToastNotifier *notifier = static_cast<IToastNotifier*>(notifier_);
+    IToastNotification *toast = static_cast<IToastNotification*>(current_toast_);
 
     HRESULT hr = notifier->Hide(toast);
     toast->Release();
-    state->current_toast = nullptr;
+    current_toast_ = nullptr;
     return SUCCEEDED(hr);
 }

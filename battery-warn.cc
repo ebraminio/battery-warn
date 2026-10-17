@@ -6,7 +6,7 @@
 #include <shellapi.h>
 
 #include "battery-warn.rc.h"
-#include "toast.h"
+#include "toast.hh"
 
 /* ---------------- constants ---------------- */
 
@@ -221,7 +221,7 @@ struct app_state_t
     DWORD           threshold;
     BOOL            warned;
     BOOL            toast_available;
-    toast_state_t   toast_state;
+    Toast           toast;
     BOOL            countdown_active;
     int             countdown_remaining;
 
@@ -309,8 +309,7 @@ struct app_state_t
 
         /* The progress bar represents the 60-second grace period. */
         if (toast_available &&
-            toast_show_progress(&toast_state,
-                                L"battery-warning",
+            toast.show_progress(L"battery-warning",
                                 is_test ? L"Test notification" : L"Battery low",
                                 body,
                                 1.0,
@@ -350,7 +349,7 @@ struct app_state_t
             countdown_remaining = 0;
             
             /* The grace period is over. */
-            toast_update_progress(&toast_state, L"battery-warning", 0.0, L"0s", L"Time's up! Plug in now.");
+            toast.update_progress(L"battery-warning", 0.0, L"0s", L"Time's up! Plug in now.");
             return;
         }
 
@@ -358,7 +357,7 @@ struct app_state_t
         wsprintfW(buf, L"%ds", countdown_remaining);
         double value = static_cast<double>(countdown_remaining)
                      / static_cast<double>(COUNTDOWN_SECONDS);
-        toast_update_progress(&toast_state, L"battery-warning", value, buf, L"Please save your work\u2026");
+        toast.update_progress(L"battery-warning", value, buf, L"Please save your work\u2026");
     }
 
     /* ------- polling ------- */
@@ -386,7 +385,7 @@ struct app_state_t
             {
                 KillTimer(hwnd, TIMER_ID_COUNTDOWN);
                 countdown_active = FALSE;
-                toast_hide(&toast_state, L"battery-warning");
+                toast.hide(L"battery-warning");
             }
         }
         else if (!warned && percent <= threshold)
@@ -578,7 +577,7 @@ struct app_state_t
                 KillTimer(h, TIMER_ID_COUNTDOWN);
                 countdown_active = FALSE;
             }
-            toast_shutdown(&toast_state);
+            toast.shutdown();
             Shell_NotifyIconW(NIM_DELETE, nid);
             if (app_icon) DestroyIcon(app_icon);
             PostQuitMessage(0);
@@ -638,7 +637,7 @@ void start()
     state.wm_taskbar_created = RegisterWindowMessageW(L"TaskbarCreated");
     state.wm_show_menu       = RegisterWindowMessageW(L"BatteryWarnShowMenu");
 
-    state.toast_available = toast_init(&state.toast_state) ? TRUE : FALSE;
+    state.toast_available = state.toast.init() ? TRUE : FALSE;
 
     state.hwnd = CreateWindowExW(0, APP_ID, APP_TITLE, 0, 0, 0, 0, 0,
                                  nullptr, nullptr, hInst, nullptr);
