@@ -39,7 +39,7 @@ COMMON=(
     -Wl,--gc-sections
 )
 
-LIBS=(-lkernel32 -luser32 -lshell32 -ladvapi32)
+LIBS=(-lkernel32 -luser32 -lshell32 -ladvapi32 -lole32)
 
 echo "==> Building BatteryWarn.exe"
 "$WINDRES" "${MINGW_INCLUDES[@]}" battery-warn.rc -o battery-warn.res
