@@ -61,16 +61,12 @@ static bool register_aumid()
     IPropertyStore *ps = nullptr;
     if (SUCCEEDED(sl->QueryInterface(IID_IPropertyStore, reinterpret_cast<void **>(&ps))))
     {
-        PROPERTYKEY pkey;
-        pkey.fmtid = {0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}};
-        pkey.pid = 5;
-
         PROPVARIANT pv;
         SecureZeroMemory(&pv, sizeof pv);
         pv.vt = VT_LPWSTR;
         pv.pwszVal = const_cast<LPWSTR>(L"BatteryWarn");
 
-        ps->SetValue(pkey, pv);
+        ps->SetValue(PKEY_AppUserModel_ID, pv);
         ps->Commit();
         ps->Release();
     }
