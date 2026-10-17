@@ -11,15 +11,6 @@
 extern "C" int _fltused = 0;
 #endif
 
-static const CLSID kCLSID_ShellLink =
-    {0x00021401, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
-static const IID kIID_IShellLinkW =
-    {0x000214f9, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
-static const IID kIID_IPersistFile =
-    {0x0000010b, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
-static const IID kIID_IPropertyStore =
-    {0x886d8eeb, 0x8cf2, 0x4446, {0x8D, 0x02, 0xCD, 0xBA, 0x1D, 0xBD, 0xCF, 0x99}};
-
 /* Windows 11 strictly requires 6 decimal places for the progress bar float. */
 static void format_unit_double(double v, wchar_t *buf)
 {
@@ -65,15 +56,15 @@ static bool register_aumid()
         return false;
 
     IShellLinkW *sl = nullptr;
-    if (FAILED(CoCreateInstance(kCLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
-                                kIID_IShellLinkW, reinterpret_cast<void **>(&sl))))
+    if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_IShellLinkW, reinterpret_cast<void **>(&sl))))
         return false;
 
     sl->SetPath(exe);
     sl->SetDescription(L"Battery Warn");
 
     IPropertyStore *ps = nullptr;
-    if (SUCCEEDED(sl->QueryInterface(kIID_IPropertyStore, reinterpret_cast<void **>(&ps))))
+    if (SUCCEEDED(sl->QueryInterface(IID_IPropertyStore, reinterpret_cast<void **>(&ps))))
     {
         PROPERTYKEY pkey;
         pkey.fmtid = {0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}};
@@ -91,7 +82,7 @@ static bool register_aumid()
 
     IPersistFile *pf = nullptr;
     bool ok = false;
-    if (SUCCEEDED(sl->QueryInterface(kIID_IPersistFile, reinterpret_cast<void **>(&pf))))
+    if (SUCCEEDED(sl->QueryInterface(IID_IPersistFile, reinterpret_cast<void **>(&pf))))
     {
         ok = SUCCEEDED(pf->Save(lnk, TRUE));
         pf->Release();
