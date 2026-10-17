@@ -22,6 +22,13 @@ jobs:
         shell: cmd
         run: build.bat
 
+      - name: Upload PR artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BatteryWarn-PR
+          path: BatteryWarn.exe
+
       - name: Publish release
         if: github.event_name != 'pull_request'
         shell: pwsh
