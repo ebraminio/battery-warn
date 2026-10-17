@@ -271,7 +271,7 @@ struct app_state_t
         Shell_NotifyIconW(NIM_MODIFY, nid);
     }
 
-    /* ------- warning ------- */
+    /* ------- unified warning ------- */
 
     void show_warning(DWORD percent, bool is_test)
     {
@@ -293,15 +293,14 @@ struct app_state_t
         wchar_t value_str[16];
         wsprintfW(value_str, L"%lu%%", static_cast<unsigned long>(percent));
 
-        /* The progress bar represents the 60-second countdown, not the
-           battery percentage. */
+        /* The progress bar represents the 60-second grace period. */
         if (toast_available &&
             toast_show_progress(L"battery-warning",
                                 is_test ? L"Test notification" : L"Battery low",
                                 body,
                                 1.0,
                                 L"60s",
-                                L"Plug in the charger"))
+                                L"Please save your work\u2026"))
         {
             if (countdown_active)
                 KillTimer(hwnd, TIMER_ID_COUNTDOWN);
@@ -334,7 +333,10 @@ struct app_state_t
             KillTimer(hwnd, TIMER_ID_COUNTDOWN);
             countdown_active = FALSE;
             countdown_remaining = 0;
-            toast_update_progress(L"battery-warning", 0.0, L"0s", L"Please plug in!");
+            
+            /* The grace period is over.  We don't force any action, we
+               just update the toast to a final, urgent state. */
+            toast_update_progress(L"battery-warning", 0.0, L"0s", L"Time's up! Plug in now.");
             return;
         }
 
@@ -342,7 +344,7 @@ struct app_state_t
         wsprintfW(buf, L"%ds", countdown_remaining);
         double value = static_cast<double>(countdown_remaining)
                      / static_cast<double>(COUNTDOWN_SECONDS);
-        toast_update_progress(L"battery-warning", value, buf, L"Plug in the charger");
+        toast_update_progress(L"battery-warning", value, buf, L"Please save your work\u2026");
     }
 
     /* ------- polling ------- */
