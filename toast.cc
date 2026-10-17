@@ -1,61 +1,56 @@
-/* toast.cc - experimental WinRT toast with a bindable progress bar.
- *
- * No CRT.  Uses combase.dll functions via LibraryLoader, and the WinRT
- * ABI interfaces declared in the SDK's flat headers.  Also creates the
- * Start Menu shortcut that registers the app's AUMID, which the shell
- * requires before it will display any toast.
- */
-
-#include "toast.h"
+/* toast.cc - experimental WinRT toast with a bindable progress bar. */
 
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
-#define _UNICODE
+#ifndef WINVER
 #define WINVER 0x0601
+#endif
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0601
-#include <Windows.h>
-#include <shobjidl_core.h>
-#include <roapi.h>
-#include <winstring.h>
-#include <inspectable.h>
-#include <windows.foundation.h>
-#include <windows.foundation.collections.h>
-#include <windows.data.xml.dom.h>
-#include <windows.ui.notifications.h>
+#endif
 
-using namespace ABI::Windows::UI::Notifications;
-using namespace ABI::Windows::Data::Xml::Dom;
-using namespace ABI::Windows::Foundation::Collections;
+#include "toast.h"
+#include "toast-abi.h"
+#include <shobjidl.h> /* For IShellLinkW, IPropertyStore, IPersistFile */
 
-/* MSVC emits a reference to this symbol whenever floating point is used.
-   Normally it comes from the CRT; with /NODEFAULTLIB we provide it. */
+/* Silence Clang warnings for the MSVC CRT marker */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreserved-identifier"
+#pragma clang diagnostic ignored "-Wmissing-variable-declarations"
 extern "C" int _fltused = 0;
+#pragma clang diagnostic pop
 
 /* The SDK declares these as extern const, expecting their data to come
-   from uuid.lib.  Under /NODEFAULTLIB we supply our own.
-
-   CLSID_ShellLink       {00021401-0000-0000-C000-000000000046}
-   IID_IShellLinkW       {000214F9-0000-0000-C000-000000000046}
-   IID_IPersistFile      {0000010B-0000-0000-C000-000000000046}
-   IID_IPropertyStore    {886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99} */
-
+   from uuid.lib.  Under /NODEFAULTLIB we supply our own. */
 static const CLSID kCLSID_ShellLink =
     {0x00021401, 0x0000, 0x0000,
      {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
-
 static const IID kIID_IShellLinkW =
     {0x000214f9, 0x0000, 0x0000,
      {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
-
 static const IID kIID_IPersistFile =
     {0x0000010b, 0x0000, 0x0000,
      {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
-
 static const IID kIID_IPropertyStore =
     {0x886d8eeb, 0x8cf2, 0x4446,
      {0x8D, 0x02, 0xCD, 0xBA, 0x1D, 0xBD, 0xCF, 0x99}};
 
-/* -------- combase.dll loader -------- */
+static const IID kIID_IToastNotificationManagerStatics = 
+    {0x50AC103F, 0xD235, 0x4598, {0xBB, 0xEF, 0x98, 0xFE, 0x4D, 0x1A, 0x3A, 0xD4}};
+static const IID kIID_IToastNotificationFactory = 
+    {0x04124B20, 0x82C6, 0x4229, {0xB1, 0x09, 0xFD, 0x9E, 0xD4, 0x66, 0x2B, 0x53}};
+static const IID kIID_IXmlDocument = 
+    {0xF7F3A506, 0x1E87, 0x42D6, {0xBC, 0xFB, 0xB8, 0xC8, 0x09, 0xFA, 0x54, 0x94}};
+static const IID kIID_IXmlDocumentIO = 
+    {0x6CD0E74E, 0xEE65, 0x4489, {0x9E, 0xBF, 0xCA, 0x43, 0xE8, 0x7B, 0xA6, 0x37}};
+static const IID kIID_IToastNotification2 = 
+    {0x9DFB9FD1, 0x143A, 0x490E, {0x90, 0xBF, 0xB9, 0xFB, 0xA7, 0x13, 0x2D, 0xE7}};
+static const IID kIID_IToastNotification4 = 
+    {0x15154935, 0x28EA, 0x4727, {0x88, 0xE9, 0xC5, 0x86, 0x80, 0xE2, 0xD1, 0x18}};
+static const IID kIID_IToastNotifier2 = 
+    {0x354389C6, 0x7C01, 0x4BD5, {0x9C, 0x20, 0x60, 0x43, 0x4E, 0x35, 0x54, 0x9B}};
+static const IID kIID_INotificationData = 
+    {0x9A9D0E44, 0x2BFD, 0x44B4, {0x80, 0x44, 0x9F, 0x6A, 0xE0, 0xB1, 0xDB, 0x47}};
 
 struct Combase
 {
@@ -74,7 +69,7 @@ struct Combase
         if (!mod) return false;
 
         #define GRAB(field, name) \
-            field = reinterpret_cast<decltype(field)>(GetProcAddress(mod, name)); \
+            field = reinterpret_cast<decltype(field)>(reinterpret_cast<void *>(GetProcAddress(mod, name))); \
             if (!field) return false;
 
         GRAB(RoInitialize, "RoInitialize")
@@ -90,8 +85,6 @@ struct Combase
 
 static Combase g_com;
 
-/* -------- HSTRING RAII wrapper -------- */
-
 struct HStr
 {
     HSTRING h;
@@ -105,20 +98,12 @@ struct HStr
     HStr &operator=(const HStr &) = delete;
 };
 
-/* -------- state -------- */
-
 static IToastNotifier     *g_notifier      = nullptr;
 static IToastNotification *g_current_toast = nullptr;
 
-/* -------- value formatting -------- */
-
-/* user32's wsprintf does not support the %f format specifier.  Its
-   documented format set is c, C, d, i, s, S, u, x, X -- no floating
-   point.  Passing %.4f produces an unparseable string, and the shell
-   falls back to zero, leaving the progress bar empty.
-
-   Format a value in [0, 1] as fixed-point using integer math, which
-   wsprintf handles correctly everywhere. */
+/* Suppress the buffer usage warning for this small helper. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
 static void format_unit_double(double v, wchar_t *buf)
 {
     if (v >= 1.0) { buf[0] = L'1'; buf[1] = L'.'; buf[2] = L'0'; buf[3] = 0; return; }
@@ -130,8 +115,7 @@ static void format_unit_double(double v, wchar_t *buf)
 
     wsprintfW(buf, L"0.%04d", scaled);
 }
-
-/* -------- XML template -------- */
+#pragma clang diagnostic pop
 
 static constexpr LPCWSTR TOAST_XML =
     L"<toast>"
@@ -148,8 +132,6 @@ static constexpr LPCWSTR TOAST_XML =
     L"  </visual>"
     L"</toast>";
 
-/* -------- AUMID registration -------- */
-
 static bool register_aumid()
 {
     wchar_t appdata[MAX_PATH];
@@ -157,8 +139,7 @@ static bool register_aumid()
         return false;
 
     wchar_t programs[MAX_PATH];
-    wsprintfW(programs, L"%s\\Microsoft\\Windows\\Start Menu\\Programs",
-              appdata);
+    wsprintfW(programs, L"%s\\Microsoft\\Windows\\Start Menu\\Programs", appdata);
 
     wchar_t lnk[MAX_PATH];
     wsprintfW(lnk, L"%s\\BatteryWarn.lnk", programs);
@@ -169,18 +150,17 @@ static bool register_aumid()
 
     IShellLinkW *sl = nullptr;
     if (FAILED(CoCreateInstance(kCLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
-                                kIID_IShellLinkW, (void **)&sl)))
+                                kIID_IShellLinkW, reinterpret_cast<void **>(&sl))))
         return false;
 
     sl->SetPath(exe);
     sl->SetDescription(L"Battery Warn");
 
     IPropertyStore *ps = nullptr;
-    if (SUCCEEDED(sl->QueryInterface(kIID_IPropertyStore, (void **)&ps)))
+    if (SUCCEEDED(sl->QueryInterface(kIID_IPropertyStore, reinterpret_cast<void **>(&ps))))
     {
         PROPERTYKEY pkey;
-        pkey.fmtid = {0x9F4C2855, 0x9F79, 0x4B39,
-                      {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}};
+        pkey.fmtid = {0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}};
         pkey.pid = 5;
 
         PROPVARIANT pv;
@@ -195,7 +175,7 @@ static bool register_aumid()
 
     IPersistFile *pf = nullptr;
     bool ok = false;
-    if (SUCCEEDED(sl->QueryInterface(kIID_IPersistFile, (void **)&pf)))
+    if (SUCCEEDED(sl->QueryInterface(kIID_IPersistFile, reinterpret_cast<void **>(&pf))))
     {
         ok = SUCCEEDED(pf->Save(lnk, TRUE));
         pf->Release();
@@ -212,14 +192,12 @@ static bool register_aumid()
                        sizeof L"Battery Warn");
         RegSetValueExW(k, L"IconUri", 0, REG_SZ,
                        reinterpret_cast<const BYTE *>(exe),
-                       static_cast<DWORD>((lstrlenW(exe) + 1) * sizeof(wchar_t)));
+                       static_cast<DWORD>((static_cast<size_t>(lstrlenW(exe)) + 1) * sizeof(wchar_t)));
         RegCloseKey(k);
     }
 
     return ok;
 }
-
-/* -------- data binding helper -------- */
 
 static bool fill_values(INotificationData *data,
                         double value,
@@ -231,7 +209,7 @@ static bool fill_values(INotificationData *data,
 {
     data->put_SequenceNumber(0);
 
-    IMap<HSTRING, HSTRING> *values = nullptr;
+    IMapStringString *values = nullptr;
     if (FAILED(data->get_Values(&values)) || !values)
         return false;
 
@@ -261,8 +239,6 @@ static bool fill_values(INotificationData *data,
     return true;
 }
 
-/* -------- public API -------- */
-
 extern "C" bool toast_init()
 {
     if (!g_com.load())
@@ -272,22 +248,16 @@ extern "C" bool toast_init()
     if (FAILED(hr) && hr != S_FALSE && hr != RPC_E_CHANGED_MODE)
         return false;
 
-    /* Classic COM is needed for the shell link APIs used by
-       register_aumid.  Separate from RoInitialize. */
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     SetCurrentProcessExplicitAppUserModelID(L"BatteryWarn");
-
-    /* Registers the AUMID with the shell.  Without this, toasts are
-       silently dropped.  Failure here is not fatal -- the caller can
-       still fall back to a regular balloon notification. */
     register_aumid();
 
     IToastNotificationManagerStatics *mgr = nullptr;
     hr = g_com.RoGetActivationFactory(
             HStr(L"Windows.UI.Notifications.ToastNotificationManager"),
-            __uuidof(IToastNotificationManagerStatics),
-            (void **)&mgr);
+            kIID_IToastNotificationManagerStatics,
+            reinterpret_cast<void **>(&mgr));
     if (FAILED(hr) || !mgr) return false;
 
     hr = mgr->CreateToastNotifierWithId(HStr(L"BatteryWarn"), &g_notifier);
@@ -317,7 +287,7 @@ extern "C" bool toast_show_progress(const wchar_t *tag,
         return false;
 
     IXmlDocumentIO *xml_io = nullptr;
-    xml_inst->QueryInterface(__uuidof(IXmlDocumentIO), (void **)&xml_io);
+    xml_inst->QueryInterface(kIID_IXmlDocumentIO, reinterpret_cast<void **>(&xml_io));
     if (!xml_io) { xml_inst->Release(); return false; }
 
     HRESULT hr = xml_io->LoadXml(HStr(TOAST_XML));
@@ -325,15 +295,15 @@ extern "C" bool toast_show_progress(const wchar_t *tag,
     if (FAILED(hr)) { xml_inst->Release(); return false; }
 
     IXmlDocument *xml_doc = nullptr;
-    xml_inst->QueryInterface(__uuidof(IXmlDocument), (void **)&xml_doc);
+    xml_inst->QueryInterface(kIID_IXmlDocument, reinterpret_cast<void **>(&xml_doc));
     xml_inst->Release();
     if (!xml_doc) return false;
 
     IToastNotificationFactory *factory = nullptr;
     hr = g_com.RoGetActivationFactory(
             HStr(L"Windows.UI.Notifications.ToastNotification"),
-            __uuidof(IToastNotificationFactory),
-            (void **)&factory);
+            kIID_IToastNotificationFactory,
+            reinterpret_cast<void **>(&factory));
     if (FAILED(hr) || !factory) { xml_doc->Release(); return false; }
 
     IToastNotification *toast = nullptr;
@@ -343,8 +313,7 @@ extern "C" bool toast_show_progress(const wchar_t *tag,
     if (FAILED(hr) || !toast) return false;
 
     IToastNotification2 *toast2 = nullptr;
-    if (SUCCEEDED(toast->QueryInterface(__uuidof(IToastNotification2),
-                                        (void **)&toast2)))
+    if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification2, reinterpret_cast<void **>(&toast2))))
     {
         toast2->put_Tag(HStr(tag));
         toast2->Release();
@@ -355,7 +324,7 @@ extern "C" bool toast_show_progress(const wchar_t *tag,
             HStr(L"Windows.UI.Notifications.NotificationData"), &data_inst)))
     {
         INotificationData *data = nullptr;
-        data_inst->QueryInterface(__uuidof(INotificationData), (void **)&data);
+        data_inst->QueryInterface(kIID_INotificationData, reinterpret_cast<void **>(&data));
         data_inst->Release();
 
         if (data)
@@ -363,8 +332,7 @@ extern "C" bool toast_show_progress(const wchar_t *tag,
             fill_values(data, value, value_string, status, title, body, true);
 
             IToastNotification4 *toast4 = nullptr;
-            if (SUCCEEDED(toast->QueryInterface(__uuidof(IToastNotification4),
-                                                (void **)&toast4)))
+            if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification4, reinterpret_cast<void **>(&toast4))))
             {
                 toast4->put_Data(data);
                 toast4->Release();
@@ -394,19 +362,18 @@ extern "C" bool toast_update_progress(const wchar_t *tag,
         return false;
 
     INotificationData *data = nullptr;
-    data_inst->QueryInterface(__uuidof(INotificationData), (void **)&data);
+    data_inst->QueryInterface(kIID_INotificationData, reinterpret_cast<void **>(&data));
     data_inst->Release();
     if (!data) return false;
 
     fill_values(data, value, value_string, status, nullptr, nullptr, false);
 
     IToastNotifier2 *notifier2 = nullptr;
-    HRESULT hr = g_notifier->QueryInterface(__uuidof(IToastNotifier2),
-                                            (void **)&notifier2);
+    HRESULT hr = g_notifier->QueryInterface(kIID_IToastNotifier2, reinterpret_cast<void **>(&notifier2));
     if (FAILED(hr) || !notifier2) { data->Release(); return false; }
 
     NotificationUpdateResult result = NotificationUpdateResult_Failed;
-    hr = notifier2->UpdateWithTag(data, HStr(tag), &result);
+    hr = notifier2->UpdateWithTag(data, HStr(tag), reinterpret_cast<int *>(&result));
     notifier2->Release();
     data->Release();
 
