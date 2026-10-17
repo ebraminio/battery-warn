@@ -7,7 +7,7 @@
 #include <propkey.h>
 #include <propsys.h>
 
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
 extern "C" int _fltused = 0;
 #endif
 
