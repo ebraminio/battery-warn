@@ -46,7 +46,7 @@ resets the warning too, so the new value takes effect right away.
 - Desktops with no battery get a quiet tooltip that says so, and no
   warnings.
 - Everything lives under `HKCU\Software\BatteryWarn`. Delete that key
-  and the app starts fresh with the default of 20%.
+  and the app starts fresh with the default of 5%.
 
 ## Building
 
