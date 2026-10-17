@@ -20,7 +20,7 @@ To start it with Windows, drop a shortcut in
 A tray icon appears. Right-click it for the menu:
 
 - **Battery: 78% (on battery)** — current state, read-only.
-- **Warn at** — pick a preset (10%, 15%, 20%, 25%, 30%) or **Custom…**.
+- **Warn at** — pick a preset (5%, 10%, 15%, 20%, 25%, 30%) or **Custom…**.
 - **Test notification** — see what a warning looks like.
 - **Exit**.
 
