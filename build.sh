@@ -43,7 +43,7 @@ LIBS=(-lkernel32 -luser32 -lshell32 -ladvapi32)
 
 echo "==> Building BatteryWarn.exe"
 "$WINDRES" "${MINGW_INCLUDES[@]}" battery-warn.rc -o battery-warn.res
-"$CLANG" "${COMMON[@]}" battery-warn.cc battery-warn.res -o BatteryWarn.exe "${LIBS[@]}"
+"$CLANG" "${COMMON[@]}" battery-warn.cc toast.cc battery-warn.res -o BatteryWarn.exe "${LIBS[@]}"
 "$STRIP" --strip-all BatteryWarn.exe
 
 echo "==> Done: BatteryWarn.exe"

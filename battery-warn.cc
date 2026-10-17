@@ -1,6 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
-#define _UNICODE
 #define WINVER 0x0601
 #define _WIN32_WINNT 0x0601
 #include <Windows.h>
@@ -34,6 +33,20 @@ static constexpr UINT MENU_PRESET_16 = 1016;
 static constexpr UINT MENU_CUSTOM    = 1099;
 static constexpr UINT MENU_TEST      = 1100;
 static constexpr UINT MENU_EXIT      = 1101;
+
+/* ---------------- clang lifetime safety ---------------- */
+
+#if defined(__has_cpp_attribute)
+#if __has_cpp_attribute(clang::lifetimebound)
+#define LIFETIME_BOUND [[clang::lifetimebound]]
+#elif __has_cpp_attribute(msvc::lifetimebound)
+#define LIFETIME_BOUND [[msvc::lifetimebound]]
+#else
+#define LIFETIME_BOUND
+#endif
+#else
+#define LIFETIME_BOUND
+#endif
 
 /* ---------------- library + OS helpers ---------------- */
 
@@ -211,7 +224,7 @@ struct app_state_t
     BOOL            countdown_active;
     int             countdown_remaining;
 
-    app_state_t(NOTIFYICONDATAW *nid_, HINSTANCE hInst_)
+    app_state_t(NOTIFYICONDATAW *nid_ LIFETIME_BOUND, HINSTANCE hInst_ LIFETIME_BOUND)
         : hwnd(nullptr), hInst(hInst_), nid(nid_),
           app_icon(nullptr), wm_taskbar_created(0), wm_show_menu(0),
           threshold(DEFAULT_THRESHOLD), warned(FALSE),
@@ -271,81 +284,55 @@ struct app_state_t
         Shell_NotifyIconW(NIM_MODIFY, nid);
     }
 
-    /* ------- warning ------- */
+    /* ------- unified warning ------- */
 
-    void show_warning(DWORD percent)
+    void show_warning(DWORD percent, bool is_test)
     {
         wchar_t body[128];
-        wsprintfW(body,
-                  L"Battery has dropped below the %lu%% threshold.",
-                  static_cast<unsigned long>(threshold));
+        if (is_test)
+        {
+            wsprintfW(body,
+                      L"This is what a warning will look like. "
+                      L"Current threshold: %lu%%.",
+                      static_cast<unsigned long>(threshold));
+        }
+        else
+        {
+            wsprintfW(body,
+                      L"Battery has dropped below the %lu%% threshold.",
+                      static_cast<unsigned long>(threshold));
+        }
 
         wchar_t value_str[16];
         wsprintfW(value_str, L"%lu%%", static_cast<unsigned long>(percent));
 
-        double value = static_cast<double>(percent) / 100.0;
-
+        /* The progress bar represents the 60-second grace period. */
         if (toast_available &&
-            toast_show_progress(L"battery-low",
-                                L"Battery low",
+            toast_show_progress(L"battery-warning",
+                                is_test ? L"Test notification" : L"Battery low",
                                 body,
-                                value,
-                                value_str,
-                                L"Plug in the charger"))
+                                1.0,
+                                L"60s",
+                                L"Please save your work\u2026"))
         {
+            if (countdown_active)
+                KillTimer(hwnd, TIMER_ID_COUNTDOWN);
+            countdown_active = TRUE;
+            countdown_remaining = COUNTDOWN_SECONDS;
+            SetTimer(hwnd, TIMER_ID_COUNTDOWN, 1000, nullptr);
             return;
         }
 
         /* Fallback: classic tray balloon. */
         nid->uFlags |= NIF_INFO;
-        nid->dwInfoFlags = NIIF_WARNING | NIIF_RESPECT_QUIET_TIME;
+        nid->dwInfoFlags = (is_test ? NIIF_INFO : NIIF_WARNING) | NIIF_RESPECT_QUIET_TIME;
         nid->uTimeout = 15000;
         wsprintfW(nid->szInfoTitle, L"Battery at %lu%%",
                   static_cast<unsigned long>(percent));
         lstrcpynW(nid->szInfo, body, ARRAYSIZE(nid->szInfo));
         Shell_NotifyIconW(NIM_MODIFY, nid);
-        nid->uFlags &= ~NIF_INFO;
+        nid->uFlags &= ~static_cast<UINT>(NIF_INFO);
         nid->dwInfoFlags = 0;
-    }
-
-    /* ------- test notification ------- */
-
-    /* The only test entry in the menu.  It shows the toast subsystem
-       in its full form: a title, a body, and a progress bar that
-       updates once a second.  Users who click this see exactly the
-       mechanism the real warning uses, plus the dynamic update path
-       that a future "battery drains in N minutes" feature would use. */
-    void start_countdown()
-    {
-        if (countdown_active)
-            return;
-
-        if (!toast_available)
-        {
-            MessageBoxW(nullptr,
-                        L"Toast notifications are not available on this "
-                        L"system.",
-                        APP_TITLE, MB_ICONWARNING);
-            return;
-        }
-
-        if (!toast_show_progress(L"countdown",
-                                 L"Battery Warn",
-                                 L"This is what a warning looks like. "
-                                 L"The bar fills in real time.",
-                                 1.0,
-                                 L"60s",
-                                 L"Counting down\u2026"))
-        {
-            MessageBoxW(nullptr,
-                        L"The toast notification could not be shown.",
-                        APP_TITLE, MB_ICONWARNING);
-            return;
-        }
-
-        countdown_active = TRUE;
-        countdown_remaining = COUNTDOWN_SECONDS;
-        SetTimer(hwnd, TIMER_ID_COUNTDOWN, 1000, nullptr);
     }
 
     void tick_countdown()
@@ -359,7 +346,9 @@ struct app_state_t
             KillTimer(hwnd, TIMER_ID_COUNTDOWN);
             countdown_active = FALSE;
             countdown_remaining = 0;
-            toast_update_progress(L"countdown", 0.0, L"0s", L"Done");
+            
+            /* The grace period is over. */
+            toast_update_progress(L"battery-warning", 0.0, L"0s", L"Time's up! Plug in now.");
             return;
         }
 
@@ -367,7 +356,7 @@ struct app_state_t
         wsprintfW(buf, L"%ds", countdown_remaining);
         double value = static_cast<double>(countdown_remaining)
                      / static_cast<double>(COUNTDOWN_SECONDS);
-        toast_update_progress(L"countdown", value, buf, L"Counting down\u2026");
+        toast_update_progress(L"battery-warning", value, buf, L"Please save your work\u2026");
     }
 
     /* ------- polling ------- */
@@ -394,7 +383,7 @@ struct app_state_t
         }
         else if (!warned && percent <= threshold)
         {
-            show_warning(percent);
+            show_warning(percent, false);
             warned = TRUE;
         }
 
@@ -419,7 +408,7 @@ struct app_state_t
                 L"Computer\\HKEY_CURRENT_USER\\Software\\BatteryWarn";
             RegSetValueExW(k, L"LastKey", 0, REG_SZ,
                 reinterpret_cast<const BYTE *>(last_key),
-                static_cast<DWORD>((lstrlenW(last_key) + 1) * sizeof(wchar_t)));
+                static_cast<DWORD>((static_cast<size_t>(lstrlenW(last_key)) + 1) * sizeof(wchar_t)));
             RegCloseKey(k);
         }
 
@@ -553,7 +542,15 @@ struct app_state_t
             case MENU_PRESET_14: set_threshold(14); return 0;
             case MENU_PRESET_16: set_threshold(16); return 0;
             case MENU_CUSTOM:    open_regedit_at_key(); return 0;
-            case MENU_TEST:      start_countdown();     return 0;
+            case MENU_TEST:
+            {
+                DWORD percent; BOOL on_ac;
+                if (read_battery(percent, on_ac))
+                    show_warning(percent, true);
+                else
+                    show_warning(threshold, true);
+                return 0;
+            }
             case MENU_EXIT:      DestroyWindow(h);      return 0;
             default: break;
             }
