@@ -12,7 +12,7 @@ cl battery-warn.cc toast.cc battery-warn.res /FeBatteryWarn.exe ^
    /link /NODEFAULTLIB /SUBSYSTEM:WINDOWS /ENTRY:start ^
    /OPT:REF /OPT:ICF /FIXED /MERGE:.rdata=.text ^
    kernel32.lib user32.lib shell32.lib advapi32.lib ^
-   ole32.lib oleaut32.lib windowsapp.lib
+   ole32.lib oleaut32.lib uuid.lib windowsapp.lib
 if errorlevel 1 exit /b 1
 
 endlocal

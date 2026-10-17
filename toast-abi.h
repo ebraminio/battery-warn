@@ -1,15 +1,12 @@
 #pragma once
 #include <Windows.h>
 
-/* Suppress the pedantic COM warnings that Clang's -Weverything
-   complains about (COM interfaces don't have virtual destructors). */
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #pragma clang diagnostic ignored "-Wreserved-identifier"
 
-/* HSTRING is just an opaque handle. Using void* avoids the reserved
-   identifier warning that comes from typing HSTRING__. */
 typedef void *HSTRING;
+typedef unsigned char boolean;
 struct IInspectable;
 
 struct IInspectable {
@@ -26,17 +23,24 @@ struct IXmlDocumentIO : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE LoadXml(HSTRING xml) = 0;
 };
 
-struct IMapStringString : IInspectable {
-    virtual HRESULT STDMETHODCALLTYPE Lookup(HSTRING key, HSTRING *value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE HasKey(HSTRING key, unsigned char *found) = 0;
-    virtual HRESULT STDMETHODCALLTYPE GetView(void **view) = 0;
-    virtual HRESULT STDMETHODCALLTYPE Insert(HSTRING key, HSTRING value, unsigned char *replaced) = 0;
-    virtual HRESULT STDMETHODCALLTYPE Remove(HSTRING key) = 0;
+template <typename T>
+struct IIterable : IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE First(void **first) = 0;
+};
+
+template <typename K, typename V>
+struct IMap : IIterable<void*> {
+    virtual HRESULT STDMETHODCALLTYPE Lookup(K key, V* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Size(UINT32* size) = 0;
+    virtual HRESULT STDMETHODCALLTYPE HasKey(K key, boolean* found) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetView(void** view) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Insert(K key, V value, boolean* replaced) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Remove(K key) = 0;
     virtual HRESULT STDMETHODCALLTYPE Clear() = 0;
 };
 
 struct INotificationData : IInspectable {
-    virtual HRESULT STDMETHODCALLTYPE get_Values(IMapStringString **values) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Values(IMap<HSTRING, HSTRING> **values) = 0;
     virtual HRESULT STDMETHODCALLTYPE get_SequenceNumber(ULONG *value) = 0;
     virtual HRESULT STDMETHODCALLTYPE put_SequenceNumber(ULONG value) = 0;
 };
@@ -56,8 +60,8 @@ struct IToastNotification2 : IToastNotification {
     virtual HRESULT STDMETHODCALLTYPE get_Tag(HSTRING *value) = 0;
     virtual HRESULT STDMETHODCALLTYPE put_Group(HSTRING value) = 0;
     virtual HRESULT STDMETHODCALLTYPE get_Group(HSTRING *value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE put_SuppressPopup(unsigned char value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE get_SuppressPopup(unsigned char *value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_SuppressPopup(boolean value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_SuppressPopup(boolean *value) = 0;
 };
 
 struct IToastNotification3 : IToastNotification2 {

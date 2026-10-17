@@ -380,6 +380,12 @@ struct app_state_t
         if (on_ac)
         {
             warned = FALSE;
+            if (countdown_active)
+            {
+                KillTimer(hwnd, TIMER_ID_COUNTDOWN);
+                countdown_active = FALSE;
+                toast_hide(L"battery-warning");
+            }
         }
         else if (!warned && percent <= threshold)
         {
