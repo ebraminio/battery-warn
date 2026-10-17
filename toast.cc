@@ -1,24 +1,17 @@
 /* toast.cc - experimental WinRT toast with a bindable progress bar. */
 
-#include "toast.hh"
+#include "shared.hh"
 #include "toast-abi.h"
 
-#define WIN32_LEAN_AND_MEAN
-#define UNICODE
-#define _UNICODE
-#ifndef WINVER
-#define WINVER 0x0601
-#endif
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
-
-#include <Windows.h>
 #include <shobjidl.h>
 #include <propkey.h>
 #include <propsys.h>
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreserved-identifier"
+#pragma clang diagnostic ignored "-Wmissing-variable-declarations"
 extern "C" int _fltused = 0;
+#pragma clang diagnostic pop
 
 static const CLSID kCLSID_ShellLink =
     {0x00021401, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
@@ -75,14 +68,14 @@ static bool register_aumid()
 
     IShellLinkW *sl = nullptr;
     if (FAILED(CoCreateInstance(kCLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
-                                kIID_IShellLinkW, (void **)&sl)))
+                                kIID_IShellLinkW, reinterpret_cast<void **>(&sl))))
         return false;
 
     sl->SetPath(exe);
     sl->SetDescription(L"Battery Warn");
 
     IPropertyStore *ps = nullptr;
-    if (SUCCEEDED(sl->QueryInterface(kIID_IPropertyStore, (void **)&ps)))
+    if (SUCCEEDED(sl->QueryInterface(kIID_IPropertyStore, reinterpret_cast<void **>(&ps))))
     {
         PROPERTYKEY pkey;
         pkey.fmtid = {0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}};
@@ -100,7 +93,7 @@ static bool register_aumid()
 
     IPersistFile *pf = nullptr;
     bool ok = false;
-    if (SUCCEEDED(sl->QueryInterface(kIID_IPersistFile, (void **)&pf)))
+    if (SUCCEEDED(sl->QueryInterface(kIID_IPersistFile, reinterpret_cast<void **>(&pf))))
     {
         ok = SUCCEEDED(pf->Save(lnk, TRUE));
         pf->Release();
@@ -161,7 +154,7 @@ bool Toast::init()
     if (!mod_) return false;
 
     #define GRAB(field, name) \
-        field = reinterpret_cast<decltype(field)>(GetProcAddress(mod_, name)); \
+        field = reinterpret_cast<decltype(field)>(reinterpret_cast<void *>(GetProcAddress(mod_, name))); \
         if (!field) return false;
 
     GRAB(pRoInitialize_, "RoInitialize")
@@ -185,10 +178,10 @@ bool Toast::init()
     hr = pRoGetActivationFactory_(
             HStr(this, L"Windows.UI.Notifications.ToastNotificationManager"),
             kIID_IToastNotificationManagerStatics,
-            (void **)&mgr);
+            reinterpret_cast<void **>(&mgr));
     if (FAILED(hr) || !mgr) return false;
 
-    hr = mgr->CreateToastNotifierWithId(HStr(this, L"BatteryWarn"), (IToastNotifier**)&notifier_);
+    hr = mgr->CreateToastNotifierWithId(HStr(this, L"BatteryWarn"), reinterpret_cast<IToastNotifier**>(&notifier_));
     mgr->Release();
 
     return SUCCEEDED(hr) && notifier_ != nullptr;
@@ -243,7 +236,7 @@ bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_
         return false;
 
     IXmlDocumentIO *xml_io = nullptr;
-    static_cast<IInspectable*>(xml_inst)->QueryInterface(kIID_IXmlDocumentIO, (void **)&xml_io);
+    static_cast<IInspectable*>(xml_inst)->QueryInterface(kIID_IXmlDocumentIO, reinterpret_cast<void **>(&xml_io));
     if (!xml_io) { static_cast<IInspectable*>(xml_inst)->Release(); return false; }
 
     HRESULT hr = xml_io->LoadXml(HStr(this, TOAST_XML));
@@ -251,7 +244,7 @@ bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_
     if (FAILED(hr)) { static_cast<IInspectable*>(xml_inst)->Release(); return false; }
 
     IXmlDocument *xml_doc = nullptr;
-    static_cast<IInspectable*>(xml_inst)->QueryInterface(kIID_IXmlDocument, (void **)&xml_doc);
+    static_cast<IInspectable*>(xml_inst)->QueryInterface(kIID_IXmlDocument, reinterpret_cast<void **>(&xml_doc));
     static_cast<IInspectable*>(xml_inst)->Release();
     if (!xml_doc) return false;
 
@@ -259,7 +252,7 @@ bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_
     hr = pRoGetActivationFactory_(
             HStr(this, L"Windows.UI.Notifications.ToastNotification"),
             kIID_IToastNotificationFactory,
-            (void **)&factory);
+            reinterpret_cast<void **>(&factory));
     if (FAILED(hr) || !factory) { xml_doc->Release(); return false; }
 
     IToastNotification *toast = nullptr;
@@ -269,7 +262,7 @@ bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_
     if (FAILED(hr) || !toast) return false;
 
     IToastNotification2 *toast2 = nullptr;
-    if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification2, (void **)&toast2)))
+    if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification2, reinterpret_cast<void **>(&toast2))))
     {
         toast2->put_Tag(HStr(this, tag));
         toast2->Release();
@@ -280,7 +273,7 @@ bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_
             HStr(this, L"Windows.UI.Notifications.NotificationData"), &data_inst)))
     {
         INotificationData *data = nullptr;
-        static_cast<IInspectable*>(data_inst)->QueryInterface(kIID_INotificationData, (void **)&data);
+        static_cast<IInspectable*>(data_inst)->QueryInterface(kIID_INotificationData, reinterpret_cast<void **>(&data));
         static_cast<IInspectable*>(data_inst)->Release();
 
         if (data)
@@ -288,7 +281,7 @@ bool Toast::show_progress(const wchar_t *tag, const wchar_t *title, const wchar_
             fill_values(data, value, value_string, status, title, body, true);
 
             IToastNotification4 *toast4 = nullptr;
-            if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification4, (void **)&toast4)))
+            if (SUCCEEDED(toast->QueryInterface(kIID_IToastNotification4, reinterpret_cast<void **>(&toast4))))
             {
                 toast4->put_Data(data);
                 toast4->Release();
@@ -317,14 +310,14 @@ bool Toast::update_progress(const wchar_t *tag, double value,
         return false;
 
     INotificationData *data = nullptr;
-    static_cast<IInspectable*>(data_inst)->QueryInterface(kIID_INotificationData, (void **)&data);
+    static_cast<IInspectable*>(data_inst)->QueryInterface(kIID_INotificationData, reinterpret_cast<void **>(&data));
     static_cast<IInspectable*>(data_inst)->Release();
     if (!data) return false;
 
     fill_values(data, value, value_string, status, nullptr, nullptr, false);
 
     IToastNotifier2 *notifier2 = nullptr;
-    HRESULT hr = notifier->QueryInterface(kIID_IToastNotifier2, (void **)&notifier2);
+    HRESULT hr = notifier->QueryInterface(kIID_IToastNotifier2, reinterpret_cast<void **>(&notifier2));
     if (FAILED(hr) || !notifier2) { data->Release(); return false; }
 
     NotificationUpdateResult result = NotificationUpdateResult_Failed;

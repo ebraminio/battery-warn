@@ -26,6 +26,7 @@ COMMON=(
     --sysroot="$SYSROOT"
     -Weverything -Wall -Wextra -Wpedantic -Werror -Weffc++
     -Wno-c++98-compat-pedantic -Wno-reserved-macro-identifier -Wno-nonportable-system-include-path
+    -Wno-non-virtual-dtor
     -fno-builtin -fno-threadsafe-statics -ftrivial-auto-var-init=pattern
     -fno-exceptions -fno-rtti -fsafe-buffer-usage-suggestions
     -flto -Oz -std=c++23

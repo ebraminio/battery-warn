@@ -1,12 +1,7 @@
-#define WIN32_LEAN_AND_MEAN
-#define UNICODE
-#define WINVER 0x0601
-#define _WIN32_WINNT 0x0601
-#include <Windows.h>
-#include <shellapi.h>
-
 #include "battery-warn.rc.h"
-#include "toast.hh"
+#include "shared.hh"
+
+#include <shellapi.h>
 
 /* ---------------- constants ---------------- */
 
@@ -33,20 +28,6 @@ static constexpr UINT MENU_PRESET_16 = 1016;
 static constexpr UINT MENU_CUSTOM    = 1099;
 static constexpr UINT MENU_TEST      = 1100;
 static constexpr UINT MENU_EXIT      = 1101;
-
-/* ---------------- clang lifetime safety ---------------- */
-
-#if defined(__has_cpp_attribute)
-#if __has_cpp_attribute(clang::lifetimebound)
-#define LIFETIME_BOUND [[clang::lifetimebound]]
-#elif __has_cpp_attribute(msvc::lifetimebound)
-#define LIFETIME_BOUND [[msvc::lifetimebound]]
-#else
-#define LIFETIME_BOUND
-#endif
-#else
-#define LIFETIME_BOUND
-#endif
 
 /* ---------------- library + OS helpers ---------------- */
 

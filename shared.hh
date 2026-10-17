@@ -1,9 +1,29 @@
-/* toast.hh - experimental WinRT toast with a bindable progress bar. */
+/* toast.hh - WinRT toast with a bindable progress bar. */
 
 #pragma once
+
+#define WIN32_LEAN_AND_MEAN
+#define UNICODE
+#ifndef WINVER
+#define WINVER 0x0601
+#endif
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
 #include <Windows.h>
 
-struct Toast {
+#if defined(__has_cpp_attribute)
+#if __has_cpp_attribute(clang::lifetimebound)
+#define LIFETIME_BOUND [[clang::lifetimebound]]
+#else
+#define LIFETIME_BOUND
+#endif
+#else
+#define LIFETIME_BOUND
+#endif
+
+class Toast {
+public:
     Toast();
     ~Toast();
 
@@ -31,7 +51,7 @@ private:
     struct HStr {
         void *h;
         Toast *state;
-        HStr(Toast *state_, const wchar_t *s);
+        HStr(Toast *state_ LIFETIME_BOUND, const wchar_t *s);
         ~HStr();
         operator void *() const { return h; }
         HStr(const HStr &) = delete;
