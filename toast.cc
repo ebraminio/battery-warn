@@ -7,11 +7,9 @@
 #include <propkey.h>
 #include <propsys.h>
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wreserved-identifier"
-#pragma clang diagnostic ignored "-Wmissing-variable-declarations"
+#if defined(_MSC_VER)
 extern "C" int _fltused = 0;
-#pragma clang diagnostic pop
+#endif
 
 static const CLSID kCLSID_ShellLink =
     {0x00021401, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
