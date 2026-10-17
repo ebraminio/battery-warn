@@ -228,16 +228,12 @@ struct app_state_t
 
     void load_settings()
     {
-        Registry reg;
-        threshold = reg.threshold();
+        threshold = Registry().threshold();
     }
 
     void set_threshold(DWORD value)
     {
-        {
-            Registry reg;
-            reg.set_threshold(value);
-        }
+        Registry().set_threshold(value);
         threshold = value;
         warned = FALSE;
         poll();
@@ -393,10 +389,7 @@ struct app_state_t
 
     void open_regedit_at_key()
     {
-        {
-            Registry reg;
-            reg.ensure_threshold_exists(threshold);
-        }
+        Registry().ensure_threshold_exists(threshold);
 
         HKEY k = nullptr;
         if (RegCreateKeyExW(HKEY_CURRENT_USER,
