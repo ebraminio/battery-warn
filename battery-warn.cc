@@ -11,7 +11,7 @@ static constexpr LPCWSTR REG_PATH  = L"Software\\BatteryWarn";
 static constexpr LPCWSTR REG_VALUE = L"Threshold";
 
 static constexpr DWORD   DEFAULT_THRESHOLD = 8;
-static constexpr UINT    POLL_MS           = 30000;
+static constexpr UINT    POLL_MS           = 500;
 static constexpr UINT    WM_TRAY           = WM_APP + 1;
 static constexpr UINT    TIMER_ID          = 1;
 static constexpr UINT    TIMER_ID_COUNTDOWN = 2;
